@@ -18,22 +18,24 @@ find_package(Threads REQUIRED)
 ################################################################################
 # Source groups
 ################################################################################
-#set(source_files
-#    "framework.h"
-#   "PyKSLib.cpp"
-#    "Util/DataConversion.h"
-#    "Util/Utility_Export.h"
-#)
-#set(ALL_FILES
-#    ${source_files}
-#)
+set(server_files
+    src/KVShard.hpp
+    src/KVShard.cpp
+    src/KVEngine.hpp
+    src/KVEngine.cpp
+    src/server.cpp
+)
+set(SERVER_FILES
+    ${server_files}
+)
 ################################################################################
 # Target
 ################################################################################
+add_executable(server ${SERVER_FILES})
 
 link_libraries(ibverbs rdmacm Threads::Threads)
 # 服务端
-add_executable(aether_server rdma_server.cpp)
+add_executable(rdma_server src/rdma_server.cpp)
 
 # 客户端
-add_executable(aether_client rdma_client.cpp)
+add_executable(rdma_client src/rdma_client.cpp)
