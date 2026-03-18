@@ -3,6 +3,7 @@
 #include <string>
 #include <optional>
 #include <cstdint>
+//TODO SIMD加速set和get运算
 namespace Aether {
     // 无锁内存池
     class LockFreeMemoryPool {

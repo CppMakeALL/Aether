@@ -31,7 +31,7 @@ namespace Aether {
                 return shards_[key % shard_count_];
             }
 
-            const size_t shard_count_ = 16; // 可配，一般=CPU核心数
+            static constexpr size_t shard_count_ = 16; // 可配，一般=CPU核心数
             std::vector<KVShard> shards_;
 
             // 饿汉模式：静态实例
