@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -shared  -o Aether.cpython-39-x86_64-linux-gnu.so CMakeFiles/Aether.dir/main.cpp.o  libnanobind-static.a

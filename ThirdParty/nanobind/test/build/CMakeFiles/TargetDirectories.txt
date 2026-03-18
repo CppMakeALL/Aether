@@ -1,0 +1,4 @@
+/home/dtl/my_project/Aether/PyAether/nanobind/test/build/CMakeFiles/Aether.dir
+/home/dtl/my_project/Aether/PyAether/nanobind/test/build/CMakeFiles/nanobind-static.dir
+/home/dtl/my_project/Aether/PyAether/nanobind/test/build/CMakeFiles/edit_cache.dir
+/home/dtl/my_project/Aether/PyAether/nanobind/test/build/CMakeFiles/rebuild_cache.dir
