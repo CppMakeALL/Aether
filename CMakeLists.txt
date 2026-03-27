@@ -11,6 +11,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 
 ################################################################################
+# Config
+################################################################################
+add_compile_options(-mavx2 -O2) 
+
+################################################################################
 # Dependencies
 ################################################################################
 find_package(Threads REQUIRED)
@@ -39,3 +44,6 @@ add_executable(rdma_server src/rdma_server.cpp)
 
 # 客户端
 add_executable(rdma_client src/rdma_client.cpp)
+
+#SIMD TEST
+add_executable(SIMD_test test/SIMD_test.cpp)
