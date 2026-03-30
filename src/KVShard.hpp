@@ -161,6 +161,7 @@ namespace Aether {
         }
 
         void set(uint64_t key, const std::string& value) {
+            //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
             HashNode* new_node = new (memory_pool_.allocate()) HashNode(key, value);
             
@@ -177,6 +178,7 @@ namespace Aether {
         }
 
         std::optional<std::string> get(uint64_t key) {
+            //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
             auto* node = buckets_[index].load(std::memory_order_acquire);
             while (node) {
@@ -187,6 +189,7 @@ namespace Aether {
             }
             return std::nullopt;
         }
+        //加入DEL和查询功能
 
     private:
         size_t hash(uint64_t key) {

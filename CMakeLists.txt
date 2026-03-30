@@ -28,7 +28,6 @@ set(server_files
     src/KVShard.cpp
     src/KVEngine.hpp
     src/KVEngine.cpp
-    src/server.cpp
 )
 set(SERVER_FILES
     ${server_files}
@@ -36,7 +35,9 @@ set(SERVER_FILES
 ################################################################################
 # Target
 ################################################################################
-add_executable(server ${SERVER_FILES})
+add_executable(server ${SERVER_FILES} src/server.cpp)
+
+add_executable(client ${SERVER_FILES} src/client.cpp)
 
 link_libraries(ibverbs rdmacm Threads::Threads)
 # 服务端
