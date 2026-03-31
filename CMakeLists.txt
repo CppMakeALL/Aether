@@ -48,3 +48,7 @@ add_executable(rdma_client src/rdma_client.cpp)
 
 #SIMD TEST
 add_executable(SIMD_test test/SIMD_test.cpp)
+
+#spdlog_test
+add_executable(spdlog_test test/spdlog_test.cpp)
+target_include_directories(spdlog_test PUBLIC ThirdParty/spdlog/include)
