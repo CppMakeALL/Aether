@@ -1,3 +1,6 @@
+/*
+    Copyright 2026 CppMakeALL. All Rights Reserved.
+*/ 
 #pragma once
 #include <atomic>
 #include <string>

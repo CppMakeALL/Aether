@@ -1,3 +1,6 @@
+/*
+    Copyright 2026 CppMakeALL. All Rights Reserved.
+*/ 
 #include <iostream>
 #include <cstring>
 #include <unistd.h>

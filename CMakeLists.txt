@@ -53,3 +53,13 @@ add_executable(SIMD_test test/SIMD_test.cpp)
 #spdlog_test
 add_executable(spdlog_test test/spdlog_test.cpp)
 target_include_directories(spdlog_test PUBLIC ThirdParty/spdlog/include)
+
+#Aether_client
+add_library(Aether_client STATIC ${SERVER_FILES} src/Aether_client.cpp)
+target_include_directories(Aether_client PUBLIC ThirdParty/spdlog/include)
+
+#Aether_client_test
+add_executable(Aether_client_test test/test_client.cpp)
+target_include_directories(Aether_client_test PUBLIC ./src)
+target_link_directories(Aether_client_test PUBLIC ./build)
+target_link_libraries(Aether_client_test PUBLIC libAether_client.a)
