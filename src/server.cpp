@@ -10,7 +10,6 @@
 #include <fcntl.h>
 #include <spdlog/spdlog.h>
 #include "KVEngine.hpp"
-#include <mutex> 
 using namespace Aether;
 
 //std::mutex clients_mutex; 
@@ -162,10 +161,22 @@ int main(int argc, char* argv[]) {
         close(epoll_fd);
         return 1;
     }
-
+    spdlog::info("================================================");
+    spdlog::info(R"(                                                       
+   _____          __  .__                  
+  /  _  \   _____/  |_|  |__   ___________ 
+ /  /_\  \_/ __ \   __\  |  \_/ __ \_  __ \
+/    |    \  ___/|  | |   Y  \  ___/|  | \/
+\____|__  /\___  >__| |___|  /\___  >__|   
+        \/     \/          \/     \/                                                                         
+    )");
+    spdlog::info("Aether KV Engine Started");
+    spdlog::info("Listen: {}:{}", ip, port);
+    spdlog::info("Max Events: {}", MAX_EVENTS);
+    spdlog::info("Buffer Size: {}KB", BUFFER_SIZE / 1024);
+    spdlog::info("================================================\n");
     // 事件循环
     struct epoll_event events[MAX_EVENTS];
-    spdlog::info("Server started on {}:{} port", ip, port);
     while (true) {
         int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         if (nfds == -1) {

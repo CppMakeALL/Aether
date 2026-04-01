@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
     //test_single_thread(ip, port);
 
     // 测试多线程
-    test_multi_thread(ip, port, 2, 10);
+    test_multi_thread(ip, port, 10, 10);
 
     return 0;
 }
