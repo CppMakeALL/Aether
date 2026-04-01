@@ -8,10 +8,12 @@
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
+#include <spdlog/spdlog.h>
 #include "KVEngine.hpp"
-
+#include <mutex> 
 using namespace Aether;
 
+//std::mutex clients_mutex; 
 const int MAX_EVENTS = 1024;
 const int BUFFER_SIZE = 4096;
 
@@ -161,11 +163,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 客户端管理
-    std::vector<Client*> clients;
-
     // 事件循环
     struct epoll_event events[MAX_EVENTS];
+    spdlog::info("Server started on {}:{} port", ip, port);
     while (true) {
         int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         if (nfds == -1) {
@@ -175,82 +175,94 @@ int main(int argc, char* argv[]) {
 
         for (int i = 0; i < nfds; ++i) {
             if (events[i].data.fd == listen_fd) {
-                // 新连接
-                struct sockaddr_in client_addr;
-                socklen_t client_addr_len = sizeof(client_addr);
-                int client_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addr_len);
-                if (client_fd == -1) {
-                    perror("accept");
-                    continue;
+                // 新连接 - 边缘触发模式下需要循环接受所有待处理的连接
+                while (true) {
+                    struct sockaddr_in client_addr;
+                    socklen_t client_addr_len = sizeof(client_addr);
+                    int client_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addr_len);
+                    if (client_fd == -1) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                            // 没有更多连接了
+                            break;
+                        } else {
+                            perror("accept");
+                            break;
+                        }
+                    }
+
+                    // 设置非阻塞
+                    set_nonblocking(client_fd);
+
+                    // 创建客户端结构
+                    Client* client = new Client();
+                    client->fd = client_fd;
+                    client->buffer_len = 0;
+
+                    // 添加到 epoll
+                    event.events = EPOLLIN | EPOLLET;
+                    event.data.ptr = client;
+                    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+                        perror("epoll_ctl");
+                        delete client;
+                        close(client_fd);
+                        continue;
+                    }
+
+                    spdlog::info("New client connected: {}", client_fd);
                 }
-
-                // 设置非阻塞
-                set_nonblocking(client_fd);
-
-                // 添加到 epoll
-                event.events = EPOLLIN | EPOLLET;
-                event.data.fd = client_fd;
-                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-                    perror("epoll_ctl");
-                    close(client_fd);
-                    continue;
-                }
-
-                // 创建客户端结构
-                Client* client = new Client();
-                client->fd = client_fd;
-                client->buffer_len = 0;
-                clients.push_back(client);
             } else {
                 // 客户端数据
-                int client_fd = events[i].data.fd;
-                Client* client = nullptr;
-
-                // 找到对应的客户端
-                for (auto c : clients) {
-                    if (c->fd == client_fd) {
-                        client = c;
-                        break;
-                    }
-                }
+                Client* client = static_cast<Client*>(events[i].data.ptr);
+                int client_fd = client->fd;
+                spdlog::info("Client {} send data", client_fd);
 
                 if (!client) continue;
 
                 // 读取数据
                 char buffer[BUFFER_SIZE];
-                int n = read(client_fd, buffer, BUFFER_SIZE);
-                if (n <= 0) {
-                    // 连接关闭或出错
-                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
-                    close(client_fd);
-                    // 从客户端列表中移除
-                    for (auto it = clients.begin(); it != clients.end(); ++it) {
-                        if ((*it)->fd == client_fd) {
-                            delete *it;
-                            clients.erase(it);
+                bool read_error = false;
+                
+                // 边缘触发模式下，需要循环读取直到EAGAIN
+                while (true) {
+                    int n = read(client_fd, buffer, BUFFER_SIZE);
+                    if (n < 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                            // 数据已读完
+                            break;
+                        } else {
+                            // 真正的错误
+                            spdlog::error("Client {} read error: {}", client_fd, strerror(errno));
+                            read_error = true;
+                            break;
+                        }
+                    } else if (n == 0) {
+                        // 连接关闭
+                        read_error = true;
+                        spdlog::info("Client {} closed", client_fd);
+                        break;
+                    } else {
+                        // 处理数据
+                        if (client->buffer_len + n < BUFFER_SIZE) {
+                            memcpy(client->buffer + client->buffer_len, buffer, n);
+                            client->buffer_len += n;
+                            // 尝试处理请求
+                            handle_client_request(client);
+                        } else {
+                            spdlog::error("Client {} buffer overflow", client_fd);
+                            // 缓冲区已满，关闭连接
+                            send(client_fd, "ERROR\r\n", 7, 0);
+                            read_error = true;
                             break;
                         }
                     }
-                } else {
-                    // 处理数据
-                    if (client->buffer_len + n < BUFFER_SIZE) {
-                        memcpy(client->buffer + client->buffer_len, buffer, n);
-                        client->buffer_len += n;
-                        // 尝试处理请求
-                        handle_client_request(client);
-                    } else {
-                        // 缓冲区已满，关闭连接
-                        send(client_fd, "ERROR\r\n", 7, 0);
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
-                        close(client_fd);
-                        for (auto it = clients.begin(); it != clients.end(); ++it) {
-                            if ((*it)->fd == client_fd) {
-                                delete *it;
-                                clients.erase(it);
-                                break;
-                            }
-                        }
-                    }
+                }
+                
+                if (read_error) {
+                    // 连接关闭或出错
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
+                    close(client_fd);
+                    // 直接删除客户端对象
+                    delete client;
                 }
             }
         }
@@ -259,10 +271,6 @@ int main(int argc, char* argv[]) {
     // 清理
     close(listen_fd);
     close(epoll_fd);
-    for (auto client : clients) {
-        close(client->fd);
-        delete client;
-    }
 
     return 0;
 }

@@ -129,10 +129,10 @@ int main(int argc, char* argv[]) {
     int port = std::stoi(argv[2]);
 
     // 测试单线程
-    test_single_thread(ip, port);
+    //test_single_thread(ip, port);
 
     // 测试多线程
-    test_multi_thread(ip, port, 10, 1000);
+    test_multi_thread(ip, port, 2, 10);
 
     return 0;
 }

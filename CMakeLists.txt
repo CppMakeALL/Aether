@@ -36,6 +36,7 @@ set(SERVER_FILES
 # Target
 ################################################################################
 add_executable(server ${SERVER_FILES} src/server.cpp)
+target_include_directories(server PUBLIC ThirdParty/spdlog/include)
 
 add_executable(client ${SERVER_FILES} src/client.cpp)
 
