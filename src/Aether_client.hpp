@@ -3,6 +3,7 @@
 */ 
 //工厂模式实现客户端连接类，同时实现tcp和rdma连接
 #pragma once
+#include "Aether_config.hpp"
 #include <string>
 #include <memory>
 #include <sys/socket.h>
@@ -10,13 +11,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-namespace Aether {
-    enum class TransMode
-    {
-        TCP,
-        RDMA
-    };
-    
+namespace Aether {    
     //forward declaration
     class TCPClient;
     class RDMAClient;

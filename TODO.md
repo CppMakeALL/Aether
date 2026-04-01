@@ -1,10 +1,10 @@
 # TODO List | 待办清单
 
 ## 待实现
-- [ ] 目前仅支持key为int，需要改成string
-- [ ] Server也需要用工厂模式封装，支持tcp和rdma
 - [ ] 观察者模式实现，用于通知key值的变化
 - [ ] 策略模式实现，用于选择不同的key值的淘汰策略(LRU/LFU/FIFO) 和序列化方法(JSON/Protobuf ,用simdjson和cista主要用于持久化)
+- [ ] 目前协议太简单，需要实现RESP协议
+- [ ] 实现RDMA服务端和客户端
 - [ ] SIMD加速哈希计算
 - [ ] 服务端加入SIMD向量化优化
 - [ ] 增加实现RDMA服务端和客户端，并提供C++层调用
@@ -23,6 +23,7 @@
 - [x] 修复多个客户端同时连接时卡住问题,问题在于epoll边缘触发时需要循环read直到EAGAIN
 
 ## 已完成 ✅
+- [x] Server也需要用工厂模式封装，支持tcp和rdma
 - [x] TCP 服务端
 - [x] TCP 客户端封装为lib,提供C++层调用
 - [x] 工厂模式封装 TCP/RDMA
