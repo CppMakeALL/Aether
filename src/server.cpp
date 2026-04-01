@@ -111,14 +111,14 @@ void handle_client_request(Client* client) {
         }
         std::string key_str = rest.substr(0, value_pos);
         std::string value = rest.substr(value_pos + 1);
-        uint64_t key = std::stoull(key_str);
-        KVEngine::instance().set(key, value);
+        //uint64_t key = std::stoull(key_str);
+        KVEngine::instance().set(key_str, value);
         send(client->fd, "OK\r\n", 4, 0);
     } else if (op == "GET") {
         // GET key
         std::string key_str = rest;
-        uint64_t key = std::stoull(key_str);
-        auto value = KVEngine::instance().get(key);
+        //uint64_t key = std::stoull(key_str);
+        auto value = KVEngine::instance().get(key_str);
         if (value) {
             std::string response = "OK " + *value + "\r\n";
             send(client->fd, response.c_str(), response.size(), 0);

@@ -4,7 +4,8 @@
 - [ ] 目前仅支持key为int，需要改成string
 - [ ] Server也需要用工厂模式封装，支持tcp和rdma
 - [ ] 观察者模式实现，用于通知key值的变化
-- [ ] 策略模式实现，用于选择不同的key值的淘汰策略(LRU/LFU/FIFO) 和序列化方法(JSON/Protobuf 主要用于持久化)
+- [ ] 策略模式实现，用于选择不同的key值的淘汰策略(LRU/LFU/FIFO) 和序列化方法(JSON/Protobuf ,用simdjson和cista主要用于持久化)
+- [ ] SIMD加速哈希计算
 - [ ] 服务端加入SIMD向量化优化
 - [ ] 增加实现RDMA服务端和客户端，并提供C++层调用
 - [ ] 实现消息分发功能，同时支持tcp和rdma
@@ -19,7 +20,7 @@
 - [ ] 加入c++20新特性，如span，span_view和协程库等，优化内存使用，并支持c++17
 
 ## BUG 修复
-- [x] 修复多个客户端同时连接时卡住问题
+- [x] 修复多个客户端同时连接时卡住问题,问题在于epoll边缘触发时需要循环read直到EAGAIN
 
 ## 已完成 ✅
 - [x] TCP 服务端

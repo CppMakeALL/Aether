@@ -12,12 +12,12 @@ namespace Aether {
                 return inst;
             }
 
-            void set(uint64_t key, const std::string& value) {
+            void set(const std::string& key, const std::string& value) {
                 auto& shard = get_shard(key);  // 路由到对应分片
                 shard.set(key, value);        // 只操作这个分片
             }
 
-            std::optional<std::string> get(uint64_t key) {
+            std::optional<std::string> get(const std::string& key) {
                 return get_shard(key).get(key);
             }
 
@@ -30,8 +30,9 @@ namespace Aether {
             KVEngine& operator=(const KVEngine&) = delete;
             
             // 路由：key → 分片下标
-            KVShard& get_shard(uint64_t key) {
-                return shards_[key % shard_count_];
+            KVShard& get_shard(const std::string& key) {
+                size_t hash = std::hash<std::string>{}(key);
+                return shards_[hash % shard_count_];
             }
 
             static constexpr size_t shard_count_ = 16; // 可配，一般=CPU核心数

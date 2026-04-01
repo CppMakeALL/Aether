@@ -94,11 +94,11 @@ namespace Aether {
 
     // 无锁哈希表节点
     struct HashNode {
-        uint64_t key;
+        const std::string& key;
         std::string value;
         HashNode* next;
 
-        HashNode(uint64_t k, const std::string& v) 
+        HashNode(const std::string& k, const std::string& v) 
             : key(k), value(v), next(nullptr) {}
     };
 
@@ -163,7 +163,7 @@ namespace Aether {
             delete[] buckets_;
         }
 
-        void set(uint64_t key, const std::string& value) {
+        void set(const std::string& key, const std::string& value) {
             //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
             HashNode* new_node = new (memory_pool_.allocate()) HashNode(key, value);
@@ -180,7 +180,7 @@ namespace Aether {
             }
         }
 
-        std::optional<std::string> get(uint64_t key) {
+        std::optional<std::string> get(const std::string& key) {
             //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
             auto* node = buckets_[index].load(std::memory_order_acquire);
@@ -195,12 +195,13 @@ namespace Aether {
         //加入DEL和查询功能
 
     private:
-        size_t hash(uint64_t key) {
+        size_t hash(const std::string& key) {
+            uint64_t h = std::hash<std::string>{}(key);
             // 简单的哈希函数
-            key = ((key >> 32) ^ key) * 0x45d9f3b;
-            key = ((key >> 32) ^ key) * 0x45d9f3b;
-            key = (key >> 32) ^ key;
-            return key % capacity_;
+            h = ((h >> 32) ^ h) * 0x45d9f3b;
+            h = ((h >> 32) ^ h) * 0x45d9f3b;
+            h = (h >> 32) ^ h;
+            return h % capacity_;
         }
 
         size_t capacity_;
@@ -225,11 +226,11 @@ namespace Aether {
             return *this;
         }
 
-        void set(uint64_t key, const std::string& value) {
+        void set(const std::string& key, const std::string& value) {
             hash_table_.set(key, value);
         }
 
-        std::optional<std::string> get(uint64_t key) {
+        std::optional<std::string> get(const std::string& key) {
             return hash_table_.get(key);
         }
 

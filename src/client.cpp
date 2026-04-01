@@ -65,12 +65,12 @@ void test_single_thread(const char* ip, int port) {
     }
 
     // 测试 SET 命令
-    std::string response = send_command(sockfd, "SET 1 test_value");
-    std::cout << "SET 1 test_value: " << response;
+    std::string response = send_command(sockfd, "SET test test_value2");
+    std::cout << "SET test test_value2: " << response;
 
     // 测试 GET 命令
-    response = send_command(sockfd, "GET 1");
-    std::cout << "GET 1: " << response;
+    response = send_command(sockfd, "GET test");
+    std::cout << "GET test: " << response;
 
     // 测试不存在的键
     response = send_command(sockfd, "GET 999");
@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
     int port = std::stoi(argv[2]);
 
     // 测试单线程
-    //test_single_thread(ip, port);
+    test_single_thread(ip, port);
 
     // 测试多线程
     test_multi_thread(ip, port, 10, 10);
