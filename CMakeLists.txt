@@ -30,6 +30,8 @@ set(server_files
     src/KVEngine.cpp
     src/Aether_Persist.hpp
     src/Aether_Persist.cpp
+    src/AE_Evict.hpp
+    src/AE_Evict.cpp
 )
 set(SERVER_FILES
     ${server_files}
@@ -37,6 +39,9 @@ set(SERVER_FILES
 ################################################################################
 # Target
 ################################################################################
+
+include_directories(ThirdParty/spdlog/include)
+
 add_executable(server ${SERVER_FILES} src/server.cpp)
 target_include_directories(server PUBLIC ThirdParty/spdlog/include)
 
@@ -72,4 +77,4 @@ target_include_directories(Aether_client PUBLIC ThirdParty/spdlog/include)
 add_executable(Aether_client_test test/test_client.cpp)
 target_include_directories(Aether_client_test PUBLIC ./src)
 target_link_directories(Aether_client_test PUBLIC ./build)
-target_link_libraries(Aether_client_test PUBLIC libAether_client.a)
+target_link_libraries(Aether_client_test PUBLIC Aether_client)

@@ -20,6 +20,10 @@ int main()
     Aether::set("key1", "value3");
     val1 = Aether::get("key1");
     std::cout << "Key 1: " << val1 << std::endl;
+
+    for(int i = 0; i < 1000; i++){
+        Aether::set("key" + std::to_string(i), "value" + std::to_string(i));
+    }
     return 0;
 }
 //g++ -o test_client test_client.cpp -I ../src -L ../build -lAether_client

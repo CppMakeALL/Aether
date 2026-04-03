@@ -262,7 +262,7 @@ namespace Aether {
     spdlog::info("Listen: {}:{}", ip_, port_);
     spdlog::info("Max Events: {}", MAX_EVENTS);
     spdlog::info("Buffer Size: {}KB", BUFFER_SIZE / 1024);
-    spdlog::info("================================================\n");        
+    spdlog::info("================================================");        
     }
 
     void TCPServer::set_nonblocking(int fd)

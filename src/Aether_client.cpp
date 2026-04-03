@@ -70,7 +70,7 @@ namespace Aether {
         if (response == "ERROR"){
             return "";
         }
-        std::string value = response.substr(4);
+        std::string value = response.substr(3);
         return value;
     }
 
