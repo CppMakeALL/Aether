@@ -1,8 +1,8 @@
 /*
     Copyright 2026 CppMakeALL. All Rights Reserved.
 */ 
-#include "Aether_server.hpp"
-#include "Aether_config.hpp"
+#include "AE_Server.hpp"
+#include "AE_Config.hpp"
 #include <csignal>
 #include <spdlog/spdlog.h>
 #include <memory>

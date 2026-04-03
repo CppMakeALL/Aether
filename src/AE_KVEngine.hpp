@@ -2,7 +2,7 @@
     Copyright 2026 CppMakeALL. All Rights Reserved.
 */ 
 #pragma once
-#include "KVShard.hpp"
+#include "AE_KVShard.hpp"
 #include <vector>
 namespace Aether {
     // 单例，只负责：分片数、路由、创建shard

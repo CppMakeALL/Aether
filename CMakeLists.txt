@@ -24,12 +24,12 @@ find_package(Threads REQUIRED)
 # Source groups
 ################################################################################
 set(server_files
-    src/KVShard.hpp
-    src/KVShard.cpp
-    src/KVEngine.hpp
-    src/KVEngine.cpp
-    src/Aether_Persist.hpp
-    src/Aether_Persist.cpp
+    src/AE_KVShard.hpp
+    src/AE_KVShard.cpp
+    src/AE_KVEngine.hpp
+    src/AE_KVEngine.cpp
+    src/AE_Persist.hpp
+    src/AE_Persist.cpp
     src/AE_Evict.hpp
     src/AE_Evict.cpp
 )
@@ -42,17 +42,12 @@ set(SERVER_FILES
 
 include_directories(ThirdParty/spdlog/include)
 
-add_executable(server ${SERVER_FILES} src/server.cpp)
-target_include_directories(server PUBLIC ThirdParty/spdlog/include)
-
-add_executable(client ${SERVER_FILES} src/client.cpp)
-
 link_libraries(ibverbs rdmacm Threads::Threads)
 # 服务端
-add_executable(rdma_server src/rdma_server.cpp)
+add_executable(rdma_server test/rdma_server.cpp)
 
 # 客户端
-add_executable(rdma_client src/rdma_client.cpp)
+add_executable(rdma_client test/rdma_client.cpp)
 
 #SIMD TEST
 add_executable(SIMD_test test/SIMD_test.cpp)
@@ -66,11 +61,11 @@ add_executable(cista_test test/cista_test.cpp)
 target_include_directories(cista_test PUBLIC ThirdParty/cista/include)
 
 #Aether_server
-add_executable(Aether_server ${SERVER_FILES} src/Aether_server.cpp src/Aether_main.cpp)
+add_executable(Aether_server ${SERVER_FILES} src/AE_Server.cpp src/AE_main.cpp)
 target_include_directories(Aether_server PUBLIC ThirdParty/spdlog/include)
 
 #Aether_client
-add_library(Aether_client STATIC ${SERVER_FILES} src/Aether_client.cpp)
+add_library(Aether_client STATIC ${SERVER_FILES} src/AE_Client.cpp)
 target_include_directories(Aether_client PUBLIC ThirdParty/spdlog/include)
 
 #Aether_client_test

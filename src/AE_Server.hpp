@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include "Aether_config.hpp"
+#include "AE_Config.hpp"
 namespace Aether {
     //统一服务端接口基类
     class ServerInterface
