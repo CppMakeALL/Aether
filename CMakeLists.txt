@@ -28,6 +28,8 @@ set(server_files
     src/KVShard.cpp
     src/KVEngine.hpp
     src/KVEngine.cpp
+    src/Aether_Persist.hpp
+    src/Aether_Persist.cpp
 )
 set(SERVER_FILES
     ${server_files}
@@ -53,6 +55,10 @@ add_executable(SIMD_test test/SIMD_test.cpp)
 #spdlog_test
 add_executable(spdlog_test test/spdlog_test.cpp)
 target_include_directories(spdlog_test PUBLIC ThirdParty/spdlog/include)
+
+#cista_test
+add_executable(cista_test test/cista_test.cpp)
+target_include_directories(cista_test PUBLIC ThirdParty/cista/include)
 
 #Aether_server
 add_executable(Aether_server ${SERVER_FILES} src/Aether_server.cpp src/Aether_main.cpp)
