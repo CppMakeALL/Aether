@@ -30,7 +30,7 @@ Optional C++20 mode enables modern features including:
 mkdir build
 cd build
 cmake ..
-make -j
+make
 ```
 
 ## Acknowledgments & Third-Party Projects

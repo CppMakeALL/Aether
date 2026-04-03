@@ -94,9 +94,11 @@ namespace Aether {
 
     // 无锁哈希表节点
     struct HashNode {
-        const std::string& key;
+        //重大bug:key是引用类型传入的如果是临时变量,会导致悬空引用
+        //const std::string& key;
+        std::string key;
         std::string value;
-        HashNode* next;
+        std::atomic<HashNode*> next{nullptr}; // 下一个节点的指针，用原子操作确保线程安全
 
         HashNode(const std::string& k, const std::string& v) 
             : key(k), value(v), next(nullptr) {}
@@ -133,7 +135,7 @@ namespace Aether {
                     for (size_t i = 0; i < capacity_; ++i) {
                         auto* node = buckets_[i].load(std::memory_order_relaxed);
                         while (node) {
-                            auto* next = node->next;
+                            auto* next = node->next.load(std::memory_order_acquire);
                             memory_pool_.deallocate(node);
                             node = next;
                         }
@@ -155,7 +157,7 @@ namespace Aether {
             for (size_t i = 0; i < capacity_; ++i) {
                 auto* node = buckets_[i].load(std::memory_order_relaxed);
                 while (node) {
-                    auto* next = node->next;
+                    auto* next = node->next.load(std::memory_order_acquire);
                     memory_pool_.deallocate(node);
                     node = next;
                 }
@@ -163,9 +165,35 @@ namespace Aether {
             delete[] buckets_;
         }
 
+        bool exist(const std::string& key) {
+            //AVX2/AVX512 加速哈希计算
+            size_t index = hash(key);
+            auto* node = buckets_[index].load(std::memory_order_acquire);
+            while (node) {
+                if (node->key == key) {
+                    return true;
+                }
+                //必须用load方法读取next指针，确保读取到最新的节点地址，防止多线程并发修改
+                node = node->next.load(std::memory_order_acquire);
+            }
+            return false;
+        }
+
         void set(const std::string& key, const std::string& value) {
             //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
+            
+            // 先检查键是否存在，如果存在则更新值
+            auto* node = buckets_[index].load(std::memory_order_acquire);
+            while (node) {
+                if (node->key == key) {
+                    node->value = value;
+                    return;
+                }
+                node = node->next.load(std::memory_order_acquire);
+            }
+            
+            // 键不存在，创建新节点
             HashNode* new_node = new (memory_pool_.allocate()) HashNode(key, value);
             
             auto* head = buckets_[index].load(std::memory_order_relaxed);
@@ -188,7 +216,8 @@ namespace Aether {
                 if (node->key == key) {
                     return node->value;
                 }
-                node = node->next;
+                //必须用load方法读取next指针，确保读取到最新的节点地址，防止多线程并发修改
+                node = node->next.load(std::memory_order_acquire);
             }
             return std::nullopt;
         }
@@ -202,6 +231,7 @@ namespace Aether {
             h = ((h >> 32) ^ h) * 0x45d9f3b;
             h = (h >> 32) ^ h;
             return h % capacity_;
+            // return h & (capacity_ - 1); ???
         }
 
         size_t capacity_;
