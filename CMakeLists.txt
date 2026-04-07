@@ -32,6 +32,7 @@ set(server_files
     src/AE_Persist.cpp
     src/AE_Evict.hpp
     src/AE_Evict.cpp
+    src/AE_Observer.cpp
 )
 set(SERVER_FILES
     ${server_files}

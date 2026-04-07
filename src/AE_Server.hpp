@@ -20,6 +20,10 @@ namespace Aether {
         virtual ~ServerInterface() = default;
         virtual bool start(const std::string& ip, int port) = 0;
         virtual bool stop() = 0;
+        void show_logo();
+    private:
+        std::string ip_;
+        int port_;
     };
 
     class ServerFactory
@@ -36,7 +40,6 @@ namespace Aether {
         virtual bool start(const std::string& ip, int port) override;
         virtual bool stop() override;
         void set_nonblocking(int fd);
-        void show_logo();
         void event_loop();
         void handle_client_request(Client* client);
     private:

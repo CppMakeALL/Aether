@@ -4,6 +4,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
+#include <spdlog/spdlog.h>
 namespace Aether {
     struct KVEntry {
         std::string key_;

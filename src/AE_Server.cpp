@@ -247,7 +247,7 @@ namespace Aether {
         return true;
     }
 
-    void TCPServer::show_logo()
+    void ServerInterface::show_logo()
     {
     spdlog::info("================================================");
     spdlog::info(R"(                                                       

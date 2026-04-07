@@ -7,7 +7,7 @@
 #include <optional>
 #include <cstdint>
 #include <spdlog/spdlog.h>
-#include "AE_Evict.hpp"
+#include "AE_Observer.hpp"
 //TODO SIMD加速set和get运算
 namespace Aether {
     // 无锁内存池
@@ -167,6 +167,8 @@ namespace Aether {
             : capacity_(capacity), 
               buckets_(new std::atomic<HashNode*>[capacity]),
               memory_pool_(sizeof(HashNode) + 256) { // 假设value最大256字节
+            metadata_manager_ = std::make_shared<MetadataManager>();
+            register_observer(metadata_manager_);
             for (size_t i = 0; i < capacity; ++i) {
                 buckets_[i].store(nullptr, std::memory_order_relaxed);
             }
@@ -176,7 +178,9 @@ namespace Aether {
         LockFreeHashTable(LockFreeHashTable&& other) noexcept
             : capacity_(other.capacity_), 
               buckets_(other.buckets_),
-              memory_pool_(std::move(other.memory_pool_)) {
+              memory_pool_(std::move(other.memory_pool_)),
+              metadata_manager_(std::move(other.metadata_manager_)),
+              observers_(std::move(other.observers_)) {
             other.capacity_ = 0;
             other.buckets_ = nullptr;
         }
@@ -202,6 +206,8 @@ namespace Aether {
                 memory_pool_ = std::move(other.memory_pool_);
                 other.capacity_ = 0;
                 other.buckets_ = nullptr;
+                metadata_manager_ = std::move(other.metadata_manager_);
+                observers_ = std::move(other.observers_);
             }
             return *this;
         }
@@ -218,7 +224,10 @@ namespace Aether {
             }
             delete[] buckets_;
         }
-
+        void register_observer(std::shared_ptr<KVObserver> observer) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            observers_.push_back(observer);
+        }
         void set_evict_strategy(std::unique_ptr<EvictStrategy> strategy) {
             strategy_ = std::move(strategy);
         }
@@ -236,59 +245,62 @@ namespace Aether {
             }
             return false;
         }
-        // void evict_key() {
-        //     auto key = strategy_->evict();
-        //     if(key){
-        //         // 从哈希表和内存池中删除键值对
-        //         size_t index = hash(*key);
-        //         auto* head = buckets_[index].load(std::memory_order_relaxed);
+        void evict_key() {
+            auto& entries = metadata_manager_->get_all_entries();
+            auto key = strategy_->evict(entries);
+            if(!key.empty()){
+                // 从哈希表和内存池中删除键值对
+                size_t index = hash(key);
+                auto* head = buckets_[index].load(std::memory_order_relaxed);
                 
-        //         // 遍历链表查找要删除的节点
-        //         HashNode* prev = nullptr;
-        //         HashNode* curr = head;
+                // 遍历链表查找要删除的节点
+                HashNode* prev = nullptr;
+                HashNode* curr = head;
                 
-        //         while (curr) {
-        //             if (curr->key == *key) {
-        //                 // 找到要删除的节点
-        //                 if (prev) {
-        //                     // 不是头节点，更新前一个节点的next指针
-        //                     while (!prev->next.compare_exchange_weak(
-        //                         curr, curr->next.load(std::memory_order_acquire),
-        //                         std::memory_order_release,
-        //                         std::memory_order_relaxed)) {
-        //                         // 如果失败，重新获取当前节点的next指针
-        //                         curr = prev->next.load(std::memory_order_acquire);
-        //                         if (!curr || curr->key != *key) {
-        //                             // 节点可能已经被其他线程删除或修改
-        //                             return;
-        //                         }
-        //                     }
-        //                 } else {
-        //                     // 是头节点，更新桶的头指针
-        //                     while (!buckets_[index].compare_exchange_weak(
-        //                         head, curr->next.load(std::memory_order_acquire),
-        //                         std::memory_order_release,
-        //                         std::memory_order_relaxed)) {
-        //                         // 如果失败，重新获取头指针
-        //                         head = buckets_[index].load(std::memory_order_relaxed);
-        //                         if (head != curr) {
-        //                             // 头节点可能已经被其他线程修改
-        //                             return;
-        //                         }
-        //                     }
-        //                 }
+                while (curr) {
+                    if (curr->key == key) {
+                        // 找到要删除的节点
+                        if (prev) {
+                            // 不是头节点，更新前一个节点的next指针
+                            while (!prev->next.compare_exchange_weak(
+                                curr, curr->next.load(std::memory_order_acquire),
+                                std::memory_order_release,
+                                std::memory_order_relaxed)) {
+                                // 如果失败，重新获取当前节点的next指针
+                                curr = prev->next.load(std::memory_order_acquire);
+                                if (!curr || curr->key != key) {
+                                    // 节点可能已经被其他线程删除或修改
+                                    return;
+                                }
+                            }
+                        } else {
+                            // 是头节点，更新桶的头指针
+                            while (!buckets_[index].compare_exchange_weak(
+                                head, curr->next.load(std::memory_order_acquire),
+                                std::memory_order_release,
+                                std::memory_order_relaxed)) {
+                                // 如果失败，重新获取头指针
+                                head = buckets_[index].load(std::memory_order_relaxed);
+                                if (head != curr) {
+                                    // 头节点可能已经被其他线程修改
+                                    return;
+                                }
+                            }
+                        }
                         
-        //                 // 释放节点内存
-        //                 memory_pool_.deallocate(curr);
-        //                 spdlog::info("Evicted key: {}", *key);
-        //                 return;
-        //             }
+                        // 释放节点内存
+                        memory_pool_.deallocate(curr);
+                        // 从MetadataManager中删除对应的entry
+                        metadata_manager_->remove_entry(key);
+                        spdlog::info("Evicted key: {}", key);
+                        return;
+                    }
                     
-        //             prev = curr;
-        //             curr = curr->next.load(std::memory_order_acquire);
-        //         }
-        //     }
-        // }
+                    prev = curr;
+                    curr = curr->next.load(std::memory_order_acquire);
+                }
+            }
+        }
 
         void set(const std::string& key, const std::string& value) {
             //AVX2/AVX512 加速哈希计算
@@ -307,9 +319,16 @@ namespace Aether {
             // 键不存在，创建新节点
             void* memory = memory_pool_.allocate();
             if (!memory) {
-                // 内存分配失败，超过最大内存限制
-                spdlog::error("Memory allocation failed, max memory limit reached");
-                return;
+                // 内存分配失败，超过最大内存限制，尝试驱逐
+                spdlog::info("Memory allocation failed for key {}, try to evict", key);
+                evict_key();
+                // 重新尝试分配内存
+                memory = memory_pool_.allocate();
+                if (!memory) {
+                    // 淘汰后仍然无法分配内存
+                    spdlog::error("Memory allocation failed even after eviction");
+                    return;
+                }
             }
             
             HashNode* new_node = new (memory) HashNode(key, value);
@@ -324,6 +343,8 @@ namespace Aether {
                     break;
                 }
             }
+            metadata_manager_->add_entry(key, value);
+            notify_all(key, DBEvent::INSERT);
         }
 
         std::optional<std::string> get(const std::string& key) {
@@ -332,6 +353,7 @@ namespace Aether {
             auto* node = buckets_[index].load(std::memory_order_acquire);
             while (node) {
                 if (node->key == key) {
+                    notify_all(key, DBEvent::GET);
                     return node->value;
                 }
                 //必须用load方法读取next指针，确保读取到最新的节点地址，防止多线程并发修改
@@ -341,7 +363,16 @@ namespace Aether {
         }
         //加入DEL和查询功能
 
+        std::shared_ptr<MetadataManager> get_metadata_manager() {
+            return metadata_manager_;
+        }
     private:
+        void notify_all(const std::string& key, DBEvent event) {
+            std::lock_guard<std::mutex> lock(mtx_);
+            for (auto& obs : observers_) {
+                obs->on_event(key, event);
+            }
+        }
         size_t hash(const std::string& key) {
             uint64_t h = std::hash<std::string>{}(key);
             // 简单的哈希函数
@@ -356,6 +387,9 @@ namespace Aether {
         std::atomic<HashNode*>* buckets_;
         LockFreeMemoryPool memory_pool_;
         std::unique_ptr<EvictStrategy> strategy_;
+        std::shared_ptr<MetadataManager> metadata_manager_;
+        std::mutex mtx_;
+        std::vector<std::shared_ptr<KVObserver>> observers_;
     };
 
     // KV分片

@@ -1,5 +1,6 @@
 #include "AE_Client.hpp"
 #include <iostream>
+#include <unistd.h>
 int main()
 {
     auto ret = Aether::connect("192.168.20.184", 8001, Aether::TransMode::TCP);
@@ -21,8 +22,11 @@ int main()
     val1 = Aether::get("key1");
     std::cout << "Key 1: " << val1 << std::endl;
 
-    for(int i = 0; i < 1000; i++){
+    for(int i = 0; i < 50; i++){
         Aether::set("key" + std::to_string(i), "value" + std::to_string(i));
+        usleep(10000);
+        auto val = Aether::get("key" + std::to_string(i));
+        //std::cout << "Key " << i << ": " << val << std::endl;
     }
     return 0;
 }
