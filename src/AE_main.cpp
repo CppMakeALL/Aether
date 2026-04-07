@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <memory>
 #include <yaml-cpp/yaml.h>
+#include "AE_KVEngine.hpp"
 //信号处理函数（signal handler）不能访问 main 里的局部变量，只能访问全局变量
 static std::unique_ptr<Aether::ServerInterface> g_server;
 
@@ -21,6 +22,8 @@ struct KVConfig {
     std::string ip;
     int port;
     Aether::TransMode trans_mode;
+    int shard_count;
+    long long max_memory;
 };
 
 KVConfig load_config(const std::string& config_path = "../Config.yml"){
@@ -40,6 +43,8 @@ KVConfig load_config(const std::string& config_path = "../Config.yml"){
             spdlog::error("Invalid trans_mode: {}", tmp_trans_mode);
             exit(1);
         }
+        cfg.shard_count = config["shard_count"].as<int>();
+        cfg.max_memory = config["max_memory"].as<size_t>();
 
     } catch (const YAML::Exception& e) {
         spdlog::error("Config fileload failed: {}", e.what());
@@ -58,6 +63,7 @@ int main()
     try{
         g_server = Aether::ServerFactory::create(cfg.trans_mode);
 
+        Aether::KVEngine::init(cfg.shard_count, cfg.max_memory);
         g_server->start(cfg.ip, cfg.port);
 
     }

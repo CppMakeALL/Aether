@@ -161,12 +161,13 @@ namespace Aether {
     // 无锁哈希表
     class LockFreeHashTable {
     public:
-        LockFreeHashTable() : capacity_(0), buckets_(nullptr) {}
+        LockFreeHashTable() : capacity_(0), buckets_(nullptr), max_memory_(0), strategy_(nullptr) {}
 
-        LockFreeHashTable(size_t capacity)
+        LockFreeHashTable(size_t capacity, size_t max_memory)
             : capacity_(capacity), 
               buckets_(new std::atomic<HashNode*>[capacity]),
-              memory_pool_(sizeof(HashNode) + 256) { // 假设value最大256字节
+              memory_pool_(sizeof(HashNode) + 256, 1024, max_memory),
+              max_memory_(max_memory) { // 假设value最大256字节
             metadata_manager_ = std::make_shared<MetadataManager>();
             register_observer(metadata_manager_);
             for (size_t i = 0; i < capacity; ++i) {
@@ -179,10 +180,13 @@ namespace Aether {
             : capacity_(other.capacity_), 
               buckets_(other.buckets_),
               memory_pool_(std::move(other.memory_pool_)),
+              strategy_(std::move(other.strategy_)),
               metadata_manager_(std::move(other.metadata_manager_)),
-              observers_(std::move(other.observers_)) {
+              observers_(std::move(other.observers_)),
+              max_memory_(other.max_memory_) {
             other.capacity_ = 0;
             other.buckets_ = nullptr;
+            other.max_memory_ = 0;
         }
 
         // 移动赋值运算符
@@ -204,10 +208,13 @@ namespace Aether {
                 capacity_ = other.capacity_;
                 buckets_ = other.buckets_;
                 memory_pool_ = std::move(other.memory_pool_);
+                strategy_ = std::move(other.strategy_);
                 other.capacity_ = 0;
                 other.buckets_ = nullptr;
                 metadata_manager_ = std::move(other.metadata_manager_);
                 observers_ = std::move(other.observers_);
+                max_memory_ = other.max_memory_;
+                other.max_memory_ = 0;
             }
             return *this;
         }
@@ -246,6 +253,10 @@ namespace Aether {
             return false;
         }
         void evict_key() {
+            if (!strategy_) {
+                spdlog::error("Evict strategy not set");
+                return;
+            }
             auto& entries = metadata_manager_->get_all_entries();
             auto key = strategy_->evict(entries);
             if(!key.empty()){
@@ -390,12 +401,13 @@ namespace Aether {
         std::shared_ptr<MetadataManager> metadata_manager_;
         std::mutex mtx_;
         std::vector<std::shared_ptr<KVObserver>> observers_;
+        size_t max_memory_;
     };
 
     // KV分片
     class KVShard {
     public:
-        KVShard() : hash_table_(1024) {
+        KVShard(size_t max_memory) : hash_table_(1024, max_memory) {
             hash_table_.set_evict_strategy(std::make_unique<FIFOStrategy>());
         }
         // 移动构造函数

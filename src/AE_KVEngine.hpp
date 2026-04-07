@@ -8,8 +8,16 @@ namespace Aether {
     // 单例，只负责：分片数、路由、创建shard
     class KVEngine {
         public:
+            static void init(int shard_count, size_t max_memory) {
+                if(inst) return;
+                inst = new KVEngine(shard_count, max_memory);
+            }
             static KVEngine& instance() {
-                return inst;
+                if(!inst) {
+                    spdlog::error("KVEngine not initialized");
+                    exit(1);
+                }
+                return *inst;
             }
 
             void set(const std::string& key, const std::string& value) {
@@ -22,9 +30,12 @@ namespace Aether {
             }
 
         private:
-            KVEngine() {
+            KVEngine(int shard_count, size_t max_memory) : max_memory_(max_memory) {
                 // 初始化 N 个分片
-                shards_.resize(shard_count_);
+                shards_.reserve(shard_count_);
+                for (size_t i = 0; i < shard_count_; ++i) {
+                    shards_.emplace_back(max_memory_);
+                }
             }
             KVEngine(const KVEngine&) = delete;
             KVEngine& operator=(const KVEngine&) = delete;
@@ -37,8 +48,9 @@ namespace Aether {
 
             static constexpr size_t shard_count_ = 16; // 可配，一般=CPU核心数
             std::vector<KVShard> shards_;
+            size_t max_memory_;
 
             // 饿汉模式：静态实例
-            static KVEngine inst;
+            static KVEngine* inst;
     };
 }
