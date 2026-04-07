@@ -24,7 +24,7 @@ int main()
 
     for(int i = 0; i < 50; i++){
         Aether::set("key" + std::to_string(i), "value" + std::to_string(i));
-        usleep(10000);
+        usleep(1000);
         auto val = Aether::get("key" + std::to_string(i));
         //std::cout << "Key " << i << ": " << val << std::endl;
     }

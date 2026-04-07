@@ -37,4 +37,3 @@ make
 This project uses the following open-source libraries from GitHub:
 - **[nanobind](https://github.com/wjakob/nanobind)** - Tiny and efficient C++/Python bindings
 - **[spdlog](https://github.com/gabime/spdlog)** – Fast C++ logging library
-- **[cista](https://github.com/felixguendling/cista)** – Simple, high-performance, zero-copy C++ serialization & reflection library.

@@ -19,7 +19,11 @@ add_compile_options(-mavx2 -O2)
 # Dependencies
 ################################################################################
 find_package(Threads REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
+include_directories(ThirdParty/spdlog/include)
+
+link_libraries(ibverbs rdmacm Threads::Threads yaml-cpp)
 ################################################################################
 # Source groups
 ################################################################################
@@ -40,10 +44,6 @@ set(SERVER_FILES
 ################################################################################
 # Target
 ################################################################################
-
-include_directories(ThirdParty/spdlog/include)
-
-link_libraries(ibverbs rdmacm Threads::Threads)
 # 服务端
 add_executable(rdma_server test/rdma_server.cpp)
 
@@ -56,10 +56,6 @@ add_executable(SIMD_test test/SIMD_test.cpp)
 #spdlog_test
 add_executable(spdlog_test test/spdlog_test.cpp)
 target_include_directories(spdlog_test PUBLIC ThirdParty/spdlog/include)
-
-#cista_test
-add_executable(cista_test test/cista_test.cpp)
-target_include_directories(cista_test PUBLIC ThirdParty/cista/include)
 
 #Aether_server
 add_executable(Aether_server ${SERVER_FILES} src/AE_Server.cpp src/AE_main.cpp)
