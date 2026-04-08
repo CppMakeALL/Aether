@@ -8,185 +8,49 @@
 #include <cstdint>
 #include <spdlog/spdlog.h>
 #include "AE_Observer.hpp"
-//TODO SIMD加速set和get运算
+
 namespace Aether {
-    // 无锁内存池
-    class LockFreeMemoryPool {
-    public:
-        struct MemoryBlock {
-            MemoryBlock* next;
-            char data[0]; // 柔性数组
-        };
-
-        LockFreeMemoryPool() : block_size_(0), max_memory_(0), used_memory_(0) {}
-
-        LockFreeMemoryPool(size_t block_size, size_t initial_blocks = 1024, size_t max_mem = 1024) 
-            : block_size_(block_size + sizeof(MemoryBlock)), max_memory_(max_mem), used_memory_(0) {
-            // 预分配初始内存块
-            for (size_t i = 0; i < initial_blocks; ++i) {
-                auto* block = static_cast<MemoryBlock*>(::malloc(block_size_));
-                if (!block) break;
-                
-                // 检查是否超过最大内存
-                size_t new_used = used_memory_.load(std::memory_order_relaxed) + block_size_;
-                if (new_used > max_memory_) {
-                    ::free(block);
-                    break;
-                }
-                
-                // 更新已用内存
-                used_memory_.fetch_add(block_size_, std::memory_order_relaxed);
-                
-                block->next = free_list_.load(std::memory_order_relaxed);
-                while (!free_list_.compare_exchange_weak(
-                    block->next, block, 
-                    std::memory_order_release, 
-                    std::memory_order_relaxed));
-            }
-        }
-
-        // 移动构造函数
-        LockFreeMemoryPool(LockFreeMemoryPool&& other) noexcept
-            : block_size_(other.block_size_), 
-              max_memory_(other.max_memory_),
-              used_memory_(other.used_memory_.load(std::memory_order_relaxed)),
-              free_list_(other.free_list_.load(std::memory_order_relaxed)) {
-            other.block_size_ = 0;
-            other.max_memory_ = 0;
-            other.used_memory_.store(0, std::memory_order_relaxed);
-            other.free_list_.store(nullptr, std::memory_order_relaxed);
-        }
-
-        // 移动赋值运算符
-        LockFreeMemoryPool& operator=(LockFreeMemoryPool&& other) noexcept {
-            if (this != &other) {
-                block_size_ = other.block_size_;
-                max_memory_ = other.max_memory_;
-                used_memory_.store(other.used_memory_.load(std::memory_order_relaxed), 
-                                 std::memory_order_relaxed);
-                free_list_.store(other.free_list_.load(std::memory_order_relaxed), 
-                                 std::memory_order_relaxed);
-                other.block_size_ = 0;
-                other.max_memory_ = 0;
-                other.used_memory_.store(0, std::memory_order_relaxed);
-                other.free_list_.store(nullptr, std::memory_order_relaxed);
-            }
-            return *this;
-        }
-
-        ~LockFreeMemoryPool() {
-            // 释放所有内存块
-            auto* block = free_list_.load(std::memory_order_relaxed);
-            while (block) {
-                auto* next = block->next;
-                ::free(block);
-                block = next;
-            }
-        }
-
-        void* allocate() {
-            auto* block = free_list_.load(std::memory_order_relaxed);
-            while (block) {
-                if (free_list_.compare_exchange_weak(
-                    block, block->next, 
-                    std::memory_order_acquire, 
-                    std::memory_order_relaxed)) {
-                    return block->data;
-                }
-                block = free_list_.load(std::memory_order_relaxed);
-            }
-            
-            // 如果没有空闲块，分配新的
-            // 检查是否超过最大内存
-            size_t new_used = used_memory_.load(std::memory_order_relaxed) + block_size_;
-            if (new_used > max_memory_) {
-                return nullptr; // 超过最大内存，拒绝分配
-            }
-            
-            // 尝试分配新内存
-            auto* new_block = static_cast<MemoryBlock*>(::malloc(block_size_));
-            if (new_block) {
-                // 更新已用内存
-                used_memory_.fetch_add(block_size_, std::memory_order_relaxed);
-                return new_block->data;
-            }
-            
-            return nullptr;
-        }
-
-        void deallocate(void* ptr) {
-            if (!ptr) return;
-            auto* block = reinterpret_cast<MemoryBlock*>(
-                static_cast<char*>(ptr) - sizeof(MemoryBlock));
-            
-            // 更新已用内存
-            used_memory_.fetch_sub(block_size_, std::memory_order_relaxed);
-            
-            block->next = free_list_.load(std::memory_order_relaxed);
-            while (!free_list_.compare_exchange_weak(
-                block->next, block, 
-                std::memory_order_release, 
-                std::memory_order_relaxed));
-        }
-
-        // 获取已用内存
-        size_t used_memory() const {
-            return used_memory_.load(std::memory_order_relaxed);
-        }
-
-        // 获取最大内存
-        size_t max_memory() const {
-            return max_memory_;
-        }
-
-    private:
-        size_t block_size_;
-        size_t max_memory_; // 最大内存限制
-        std::atomic<size_t> used_memory_; // 已用内存
-        std::atomic<MemoryBlock*> free_list_{nullptr};
+    // 开放寻址哈希表的槽位状态
+    enum class SlotStatus : uint8_t {
+        EMPTY = 0,      // 空槽位
+        OCCUPIED = 1,   // 已占用
+        DELETED = 2     // 已删除（惰性删除标记）
     };
 
-    // 无锁哈希表节点
-    struct HashNode {
-        //重大bug:key是引用类型传入的如果是临时变量,会导致悬空引用
-        //const std::string& key;
+    // 开放寻址哈希表的槽位
+    struct HashSlot {
+        std::atomic<SlotStatus> status{SlotStatus::EMPTY};
         std::string key;
         std::string value;
-        std::atomic<HashNode*> next{nullptr}; // 下一个节点的指针，用原子操作确保线程安全
-
-        HashNode(const std::string& k, const std::string& v) 
-            : key(k), value(v), next(nullptr) {}
     };
 
-    // 无锁哈希表
+    // 无锁开放寻址哈希表
     class LockFreeHashTable {
     public:
-        LockFreeHashTable() : capacity_(0), buckets_(nullptr), max_memory_(0), strategy_(nullptr) {}
+        LockFreeHashTable() : capacity_(0), buckets_(nullptr), max_memory_(0), used_memory_(0), strategy_(nullptr) {}
 
         LockFreeHashTable(size_t capacity, size_t max_memory)
             : capacity_(capacity), 
-              buckets_(new std::atomic<HashNode*>[capacity]),
-              memory_pool_(sizeof(HashNode) + 256, 1024, max_memory),
-              max_memory_(max_memory) { // 假设value最大256字节
+              buckets_(new HashSlot[capacity]),
+              max_memory_(max_memory),
+              used_memory_(0) {
             metadata_manager_ = std::make_shared<MetadataManager>();
             register_observer(metadata_manager_);
-            for (size_t i = 0; i < capacity; ++i) {
-                buckets_[i].store(nullptr, std::memory_order_relaxed);
-            }
         }
 
         // 移动构造函数
         LockFreeHashTable(LockFreeHashTable&& other) noexcept
             : capacity_(other.capacity_), 
               buckets_(other.buckets_),
-              memory_pool_(std::move(other.memory_pool_)),
               strategy_(std::move(other.strategy_)),
               metadata_manager_(std::move(other.metadata_manager_)),
               observers_(std::move(other.observers_)),
-              max_memory_(other.max_memory_) {
+              max_memory_(other.max_memory_),
+              used_memory_(other.used_memory_.load(std::memory_order_relaxed)) {
             other.capacity_ = 0;
             other.buckets_ = nullptr;
             other.max_memory_ = 0;
+            other.used_memory_.store(0, std::memory_order_relaxed);
         }
 
         // 移动赋值运算符
@@ -194,64 +58,70 @@ namespace Aether {
             if (this != &other) {
                 // 清理当前资源
                 if (buckets_) {
-                    for (size_t i = 0; i < capacity_; ++i) {
-                        auto* node = buckets_[i].load(std::memory_order_relaxed);
-                        while (node) {
-                            auto* next = node->next.load(std::memory_order_acquire);
-                            memory_pool_.deallocate(node);
-                            node = next;
-                        }
-                    }
                     delete[] buckets_;
                 }
                 
                 capacity_ = other.capacity_;
                 buckets_ = other.buckets_;
-                memory_pool_ = std::move(other.memory_pool_);
                 strategy_ = std::move(other.strategy_);
-                other.capacity_ = 0;
-                other.buckets_ = nullptr;
                 metadata_manager_ = std::move(other.metadata_manager_);
                 observers_ = std::move(other.observers_);
                 max_memory_ = other.max_memory_;
+                used_memory_.store(other.used_memory_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                
+                other.capacity_ = 0;
+                other.buckets_ = nullptr;
                 other.max_memory_ = 0;
+                other.used_memory_.store(0, std::memory_order_relaxed);
             }
             return *this;
         }
 
         ~LockFreeHashTable() {
-            if (!buckets_) return;
-            for (size_t i = 0; i < capacity_; ++i) {
-                auto* node = buckets_[i].load(std::memory_order_relaxed);
-                while (node) {
-                    auto* next = node->next.load(std::memory_order_acquire);
-                    memory_pool_.deallocate(node);
-                    node = next;
-                }
+            if (buckets_) {
+                delete[] buckets_;
             }
-            delete[] buckets_;
         }
+
         void register_observer(std::shared_ptr<KVObserver> observer) {
             std::lock_guard<std::mutex> lock(mtx_);
             observers_.push_back(observer);
         }
+
         void set_evict_strategy(std::unique_ptr<EvictStrategy> strategy) {
             strategy_ = std::move(strategy);
         }
 
         bool exist(const std::string& key) {
-            //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
-            auto* node = buckets_[index].load(std::memory_order_acquire);
-            while (node) {
-                if (node->key == key) {
+            size_t original_index = index;
+            size_t probe_count = 0;
+
+            while (true) {
+                auto status = buckets_[index].status.load(std::memory_order_acquire);
+                
+                if (status == SlotStatus::EMPTY) {
+                    return false;
+                } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
                     return true;
                 }
-                //必须用load方法读取next指针，确保读取到最新的节点地址，防止多线程并发修改
-                node = node->next.load(std::memory_order_acquire);
+
+                // 线性探测
+                index = (index + 1) % capacity_;
+                probe_count++;
+                
+                // 探测完整个表
+                if (probe_count >= capacity_) {
+                    return false;
+                }
+                
+                // 回到起点，说明表已满
+                if (index == original_index) {
+                    return false;
+                }
             }
-            return false;
         }
+
         void evict_key() {
             if (!strategy_) {
                 spdlog::error("Evict strategy not set");
@@ -259,124 +129,169 @@ namespace Aether {
             }
             auto& entries = metadata_manager_->get_all_entries();
             auto key = strategy_->evict(entries);
-            if(!key.empty()){
-                // 从哈希表和内存池中删除键值对
+            if(!key.empty()) {
+                // 从哈希表中删除键值对
                 size_t index = hash(key);
-                auto* head = buckets_[index].load(std::memory_order_relaxed);
-                
-                // 遍历链表查找要删除的节点
-                HashNode* prev = nullptr;
-                HashNode* curr = head;
-                
-                while (curr) {
-                    if (curr->key == key) {
-                        // 找到要删除的节点
-                        if (prev) {
-                            // 不是头节点，更新前一个节点的next指针
-                            while (!prev->next.compare_exchange_weak(
-                                curr, curr->next.load(std::memory_order_acquire),
-                                std::memory_order_release,
-                                std::memory_order_relaxed)) {
-                                // 如果失败，重新获取当前节点的next指针
-                                curr = prev->next.load(std::memory_order_acquire);
-                                if (!curr || curr->key != key) {
-                                    // 节点可能已经被其他线程删除或修改
-                                    return;
-                                }
-                            }
-                        } else {
-                            // 是头节点，更新桶的头指针
-                            while (!buckets_[index].compare_exchange_weak(
-                                head, curr->next.load(std::memory_order_acquire),
-                                std::memory_order_release,
-                                std::memory_order_relaxed)) {
-                                // 如果失败，重新获取头指针
-                                head = buckets_[index].load(std::memory_order_relaxed);
-                                if (head != curr) {
-                                    // 头节点可能已经被其他线程修改
-                                    return;
-                                }
-                            }
-                        }
-                        
-                        // 释放节点内存
-                        memory_pool_.deallocate(curr);
+                size_t original_index = index;
+                size_t probe_count = 0;
+
+                while (true) {
+                    auto status = buckets_[index].status.load(std::memory_order_acquire);
+                    
+                    if (status == SlotStatus::EMPTY) {
+                        return; // 键不存在
+                    } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
+                        // 计算释放的内存（只计算动态分配的部分）
+                        size_t memory_freed = buckets_[index].key.size() + buckets_[index].value.size();
+                        // 标记为已删除
+                        buckets_[index].status.store(SlotStatus::DELETED, std::memory_order_release);
+                        // 减少内存使用
+                        used_memory_.fetch_sub(memory_freed, std::memory_order_relaxed);
                         // 从MetadataManager中删除对应的entry
                         metadata_manager_->remove_entry(key);
                         spdlog::info("Evicted key: {}", key);
                         return;
                     }
+
+                    // 线性探测
+                    index = (index + 1) % capacity_;
+                    probe_count++;
                     
-                    prev = curr;
-                    curr = curr->next.load(std::memory_order_acquire);
+                    // 探测完整个表
+                    if (probe_count >= capacity_) {
+                        return;
+                    }
+                    
+                    // 回到起点，说明表已满
+                    if (index == original_index) {
+                        return;
+                    }
                 }
             }
         }
 
         void set(const std::string& key, const std::string& value) {
-            //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
-            
-            // 先检查键是否存在，如果存在则更新值
-            auto* node = buckets_[index].load(std::memory_order_acquire);
-            while (node) {
-                if (node->key == key) {
-                    node->value = value;
-                    return;
-                }
-                node = node->next.load(std::memory_order_acquire);
-            }
-            
-            // 键不存在，创建新节点
-            void* memory = memory_pool_.allocate();
-            if (!memory) {
-                // 内存分配失败，超过最大内存限制，尝试驱逐
-                spdlog::info("Memory allocation failed for key {}, try to evict", key);
-                evict_key();
-                // 重新尝试分配内存
-                memory = memory_pool_.allocate();
-                if (!memory) {
-                    // 淘汰后仍然无法分配内存
-                    spdlog::error("Memory allocation failed even after eviction");
-                    return;
-                }
-            }
-            
-            HashNode* new_node = new (memory) HashNode(key, value);
-            
-            auto* head = buckets_[index].load(std::memory_order_relaxed);
+            size_t original_index = index;
+            size_t probe_count = 0;
+            size_t first_deleted_index = capacity_; // 记录第一个已删除的槽位
+
             while (true) {
-                new_node->next = head;
-                if (buckets_[index].compare_exchange_weak(
-                    head, new_node, 
-                    std::memory_order_release, 
-                    std::memory_order_relaxed)) {
-                    break;
+                auto status = buckets_[index].status.load(std::memory_order_acquire);
+                
+                if (status == SlotStatus::EMPTY) {
+                    // 找到空槽位，尝试插入
+                    if (first_deleted_index != capacity_) {
+                        // 使用之前找到的已删除槽位
+                        index = first_deleted_index;
+                    }
+                    
+                    // 计算内存使用（只计算动态分配的部分）
+                    size_t memory_needed = key.size() + value.size();
+                    size_t current_used = used_memory_.load(std::memory_order_relaxed);
+                    size_t new_used = current_used + memory_needed;
+                    
+                    spdlog::info("Current used memory: {}, needed: {}, new: {}, max: {}", 
+                        current_used, memory_needed, new_used, max_memory_);
+                    
+                    // 检查内存是否超过限制
+                    if (new_used > max_memory_) {
+                        // 内存不足，尝试驱逐
+                        spdlog::info("Memory allocation failed for key {}, try to evict", key);
+                        evict_key();
+                        // 重新尝试插入
+                        return set(key, value);
+                    }
+                    
+                    if (buckets_[index].status.compare_exchange_weak(
+                        status, SlotStatus::OCCUPIED, 
+                        std::memory_order_release, 
+                        std::memory_order_relaxed)) {
+                        // 插入成功，更新键值和内存使用
+                        buckets_[index].key = key;
+                        buckets_[index].value = value;
+                        used_memory_.fetch_add(memory_needed, std::memory_order_relaxed);
+                        metadata_manager_->add_entry(key, value);
+                        notify_all(key, DBEvent::INSERT);
+                        spdlog::info("Inserted key {}, memory used now: {}", key, current_used + memory_needed);
+                        return;
+                    }
+                    // 插入失败，重新探测
+                    status = buckets_[index].status.load(std::memory_order_acquire);
+                }
+                
+                if (status == SlotStatus::OCCUPIED) {
+                    if (buckets_[index].key == key) {
+                        // 键已存在，更新值
+                        buckets_[index].value = value;
+                        return;
+                    }
+                } else if (status == SlotStatus::DELETED) {
+                    // 记录第一个已删除的槽位
+                    if (first_deleted_index == capacity_) {
+                        first_deleted_index = index;
+                    }
+                }
+
+                // 线性探测
+                index = (index + 1) % capacity_;
+                probe_count++;
+                
+                // 探测完整个表
+                if (probe_count >= capacity_) {
+                    // 表已满，尝试驱逐
+                    spdlog::info("Hash table full for key {}, try to evict", key);
+                    evict_key();
+                    // 重新尝试插入
+                    return set(key, value);
+                }
+                
+                // 回到起点，说明表已满
+                if (index == original_index) {
+                    // 表已满，尝试驱逐
+                    spdlog::info("Hash table full for key {}, try to evict", key);
+                    evict_key();
+                    // 重新尝试插入
+                    return set(key, value);
                 }
             }
-            metadata_manager_->add_entry(key, value);
-            notify_all(key, DBEvent::INSERT);
         }
 
         std::optional<std::string> get(const std::string& key) {
-            //AVX2/AVX512 加速哈希计算
             size_t index = hash(key);
-            auto* node = buckets_[index].load(std::memory_order_acquire);
-            while (node) {
-                if (node->key == key) {
+            size_t original_index = index;
+            size_t probe_count = 0;
+
+            while (true) {
+                auto status = buckets_[index].status.load(std::memory_order_acquire);
+                
+                if (status == SlotStatus::EMPTY) {
+                    return std::nullopt;
+                } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
                     notify_all(key, DBEvent::GET);
-                    return node->value;
+                    return buckets_[index].value;
                 }
-                //必须用load方法读取next指针，确保读取到最新的节点地址，防止多线程并发修改
-                node = node->next.load(std::memory_order_acquire);
+
+                // 线性探测
+                index = (index + 1) % capacity_;
+                probe_count++;
+                
+                // 探测完整个表
+                if (probe_count >= capacity_) {
+                    return std::nullopt;
+                }
+                
+                // 回到起点，说明表已满
+                if (index == original_index) {
+                    return std::nullopt;
+                }
             }
-            return std::nullopt;
         }
-        //加入DEL和查询功能
 
         std::shared_ptr<MetadataManager> get_metadata_manager() {
             return metadata_manager_;
         }
+
     private:
         void notify_all(const std::string& key, DBEvent event) {
             std::lock_guard<std::mutex> lock(mtx_);
@@ -384,6 +299,7 @@ namespace Aether {
                 obs->on_event(key, event);
             }
         }
+
         size_t hash(const std::string& key) {
             uint64_t h = std::hash<std::string>{}(key);
             // 简单的哈希函数
@@ -391,17 +307,16 @@ namespace Aether {
             h = ((h >> 32) ^ h) * 0x45d9f3b;
             h = (h >> 32) ^ h;
             return h % capacity_;
-            // return h & (capacity_ - 1); ???
         }
 
         size_t capacity_;
-        std::atomic<HashNode*>* buckets_;
-        LockFreeMemoryPool memory_pool_;
+        HashSlot* buckets_;
         std::unique_ptr<EvictStrategy> strategy_;
         std::shared_ptr<MetadataManager> metadata_manager_;
         std::mutex mtx_;
         std::vector<std::shared_ptr<KVObserver>> observers_;
         size_t max_memory_;
+        std::atomic<size_t> used_memory_;
     };
 
     // KV分片

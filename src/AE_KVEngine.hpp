@@ -29,8 +29,12 @@ namespace Aether {
                 return get_shard(key).get(key);
             }
 
+        protected:
+            // 饿汉模式：静态实例
+            static KVEngine* inst;
+
         private:
-            KVEngine(int shard_count, size_t max_memory) : max_memory_(max_memory) {
+            KVEngine(int shard_count, size_t max_memory) : max_memory_(max_memory), shard_count_(shard_count) {
                 // 初始化 N 个分片
                 shards_.reserve(shard_count_);
                 for (size_t i = 0; i < shard_count_; ++i) {
@@ -46,11 +50,8 @@ namespace Aether {
                 return shards_[hash % shard_count_];
             }
 
-            static constexpr size_t shard_count_ = 16; // 可配，一般=CPU核心数
+            size_t shard_count_; // 可配，一般=CPU核心数
             std::vector<KVShard> shards_;
             size_t max_memory_;
-
-            // 饿汉模式：静态实例
-            static KVEngine* inst;
     };
 }

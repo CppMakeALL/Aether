@@ -21,6 +21,15 @@ add_compile_options(-mavx2 -O2)
 find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
+find_library(RDMACM_LIB NAMES rdmacm)
+find_library(IBVERBS_LIB NAMES ibverbs)
+
+if(NOT RDMACM_LIB OR NOT IBVERBS_LIB)
+    message(FATAL_ERROR "NOT Find rdmacm and ibverbs")
+else()
+    message(STATUS "Find rdmacm and ibverbs")
+endif()
+
 include_directories(ThirdParty/spdlog/include)
 
 link_libraries(ibverbs rdmacm Threads::Threads yaml-cpp)
@@ -63,10 +72,21 @@ target_include_directories(Aether_server PUBLIC ThirdParty/spdlog/include)
 
 #Aether_client
 add_library(Aether_client STATIC ${SERVER_FILES} src/AE_Client.cpp)
-target_include_directories(Aether_client PUBLIC ThirdParty/spdlog/include)
 
 #Aether_client_test
 add_executable(Aether_client_test test/test_client.cpp)
 target_include_directories(Aether_client_test PUBLIC ./src)
 target_link_directories(Aether_client_test PUBLIC ./build)
 target_link_libraries(Aether_client_test PUBLIC Aether_client)
+
+#performance_test
+add_executable(performance_test test/performance_test.cpp)
+target_include_directories(performance_test PUBLIC ./src)
+target_link_directories(performance_test PUBLIC ./build)
+target_link_libraries(performance_test PUBLIC Aether_client)
+
+#test_open_addressing
+add_executable(test_open_addressing test/test_open_addressing.cpp)
+target_include_directories(test_open_addressing PUBLIC ./src)
+target_link_directories(test_open_addressing PUBLIC ./build)
+target_link_libraries(test_open_addressing PUBLIC Aether_client)
