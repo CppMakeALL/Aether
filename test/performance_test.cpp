@@ -52,8 +52,8 @@ int main()
     
     // 生成所有key和value
     for(int i = 0; i < num_keys; i++){
-        keys.push_back(generate_random_string(30));
-        values.push_back(generate_random_string(20 * 1024));
+        keys.push_back("key_" + std::to_string(i));
+        values.push_back(generate_random_string(50 * 1024));
     }
 
     // 运行多次测试
