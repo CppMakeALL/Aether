@@ -48,13 +48,24 @@ namespace Aether {
         }
 
         char buffer[4096] = {0};
-        int n = recv(sockfd_, buffer, sizeof(buffer) - 1, 0);
+        std::string response;
+        int n;
+        
+        // 循环接收完整的响应
+        while ((n = recv(sockfd_, buffer, sizeof(buffer) - 1, 0)) > 0) {
+            response.append(buffer, n);
+            // 检查是否收到完整的响应（以\r\n结尾）
+            if (response.find("\r\n") != std::string::npos) {
+                break;
+            }
+        }
+        
         if (n == -1) {
             perror("recv");
             return "ERROR";
         }
 
-        return std::string(buffer, n);
+        return response;
     }
 
     bool TCPClient::set(const std::string& key, const std::string& value)
@@ -71,6 +82,11 @@ namespace Aether {
             return "";
         }
         std::string value = response.substr(3);
+        // 移除响应末尾的\r\n
+        size_t pos = value.find("\r\n");
+        if (pos != std::string::npos) {
+            value = value.substr(0, pos);
+        }
         return value;
     }
 

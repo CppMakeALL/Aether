@@ -147,7 +147,8 @@ namespace Aether {
                     int n = read(client_fd, buffer, BUFFER_SIZE);
                     if (n < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                            // 数据已读完
+                            // 数据已读完，此时检查是否有完整的请求
+                            handle_client_request(client);
                             break;
                         } else {
                             // 真正的错误
@@ -165,8 +166,6 @@ namespace Aether {
                         if (client->buffer_len + n < BUFFER_SIZE) {
                             memcpy(client->buffer + client->buffer_len, buffer, n);
                             client->buffer_len += n;
-                            // 尝试处理请求
-                            handle_client_request(client);
                         } else {
                             spdlog::error("Client {} buffer overflow", client_fd);
                             // 缓冲区已满，关闭连接

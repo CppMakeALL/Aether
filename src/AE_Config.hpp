@@ -4,7 +4,7 @@
 #pragma once
 namespace Aether {
     constexpr int MAX_EVENTS = 1024;
-    constexpr int BUFFER_SIZE = 4096;
+    constexpr int BUFFER_SIZE = 1024 * 1024;
     enum class TransMode
     {
         TCP,

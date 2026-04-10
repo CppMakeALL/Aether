@@ -20,6 +20,7 @@ namespace Aether {
     // 开放寻址哈希表的槽位
     struct HashSlot {
         std::atomic<SlotStatus> status{SlotStatus::EMPTY};
+        uint64_t hash;  
         std::string key;
         std::string value;
     };
@@ -92,201 +93,13 @@ namespace Aether {
             strategy_ = std::move(strategy);
         }
 
-        bool exist(const std::string& key) {
-            size_t index = hash(key);
-            size_t original_index = index;
-            size_t probe_count = 0;
+        bool exist(const std::string& key);
 
-            while (true) {
-                auto status = buckets_[index].status.load(std::memory_order_acquire);
-                
-                if (status == SlotStatus::EMPTY) {
-                    return false;
-                } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
-                    return true;
-                }
+        void evict_key();
 
-                // 线性探测
-                index = (index + 1) % capacity_;
-                probe_count++;
-                
-                // 探测完整个表
-                if (probe_count >= capacity_) {
-                    return false;
-                }
-                
-                // 回到起点，说明表已满
-                if (index == original_index) {
-                    return false;
-                }
-            }
-        }
+        void set(const std::string& key, const std::string& value);
 
-        void evict_key() {
-            if (!strategy_) {
-                spdlog::error("Evict strategy not set");
-                return;
-            }
-            auto& entries = metadata_manager_->get_all_entries();
-            auto key = strategy_->evict(entries);
-            if(!key.empty()) {
-                // 从哈希表中删除键值对
-                size_t index = hash(key);
-                size_t original_index = index;
-                size_t probe_count = 0;
-
-                while (true) {
-                    auto status = buckets_[index].status.load(std::memory_order_acquire);
-                    
-                    if (status == SlotStatus::EMPTY) {
-                        return; // 键不存在
-                    } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
-                        // 计算释放的内存（只计算动态分配的部分）
-                        size_t memory_freed = buckets_[index].key.size() + buckets_[index].value.size();
-                        // 标记为已删除
-                        buckets_[index].status.store(SlotStatus::DELETED, std::memory_order_release);
-                        // 减少内存使用
-                        used_memory_.fetch_sub(memory_freed, std::memory_order_relaxed);
-                        // 从MetadataManager中删除对应的entry
-                        metadata_manager_->remove_entry(key);
-                        spdlog::info("Evicted key: {}", key);
-                        return;
-                    }
-
-                    // 线性探测
-                    index = (index + 1) % capacity_;
-                    probe_count++;
-                    
-                    // 探测完整个表
-                    if (probe_count >= capacity_) {
-                        return;
-                    }
-                    
-                    // 回到起点，说明表已满
-                    if (index == original_index) {
-                        return;
-                    }
-                }
-            }
-        }
-
-        void set(const std::string& key, const std::string& value) {
-            size_t index = hash(key);
-            size_t original_index = index;
-            size_t probe_count = 0;
-            size_t first_deleted_index = capacity_; // 记录第一个已删除的槽位
-
-            while (true) {
-                auto status = buckets_[index].status.load(std::memory_order_acquire);
-                
-                if (status == SlotStatus::EMPTY) {
-                    // 找到空槽位，尝试插入
-                    if (first_deleted_index != capacity_) {
-                        // 使用之前找到的已删除槽位
-                        index = first_deleted_index;
-                    }
-                    
-                    // 计算内存使用（只计算动态分配的部分）
-                    size_t memory_needed = key.size() + value.size();
-                    size_t current_used = used_memory_.load(std::memory_order_relaxed);
-                    size_t new_used = current_used + memory_needed;
-                    
-                    spdlog::info("Current used memory: {}, needed: {}, new: {}, max: {}", 
-                        current_used, memory_needed, new_used, max_memory_);
-                    
-                    // 检查内存是否超过限制
-                    if (new_used > max_memory_) {
-                        // 内存不足，尝试驱逐
-                        spdlog::info("Memory allocation failed for key {}, try to evict", key);
-                        evict_key();
-                        // 重新尝试插入
-                        return set(key, value);
-                    }
-                    
-                    if (buckets_[index].status.compare_exchange_weak(
-                        status, SlotStatus::OCCUPIED, 
-                        std::memory_order_release, 
-                        std::memory_order_relaxed)) {
-                        // 插入成功，更新键值和内存使用
-                        buckets_[index].key = key;
-                        buckets_[index].value = value;
-                        used_memory_.fetch_add(memory_needed, std::memory_order_relaxed);
-                        metadata_manager_->add_entry(key, value);
-                        notify_all(key, DBEvent::INSERT);
-                        spdlog::info("Inserted key {}, memory used now: {}", key, current_used + memory_needed);
-                        return;
-                    }
-                    // 插入失败，重新探测
-                    status = buckets_[index].status.load(std::memory_order_acquire);
-                }
-                
-                if (status == SlotStatus::OCCUPIED) {
-                    if (buckets_[index].key == key) {
-                        // 键已存在，更新值
-                        buckets_[index].value = value;
-                        return;
-                    }
-                } else if (status == SlotStatus::DELETED) {
-                    // 记录第一个已删除的槽位
-                    if (first_deleted_index == capacity_) {
-                        first_deleted_index = index;
-                    }
-                }
-
-                // 线性探测
-                index = (index + 1) % capacity_;
-                probe_count++;
-                
-                // 探测完整个表
-                if (probe_count >= capacity_) {
-                    // 表已满，尝试驱逐
-                    spdlog::info("Hash table full for key {}, try to evict", key);
-                    evict_key();
-                    // 重新尝试插入
-                    return set(key, value);
-                }
-                
-                // 回到起点，说明表已满
-                if (index == original_index) {
-                    // 表已满，尝试驱逐
-                    spdlog::info("Hash table full for key {}, try to evict", key);
-                    evict_key();
-                    // 重新尝试插入
-                    return set(key, value);
-                }
-            }
-        }
-
-        std::optional<std::string> get(const std::string& key) {
-            size_t index = hash(key);
-            size_t original_index = index;
-            size_t probe_count = 0;
-
-            while (true) {
-                auto status = buckets_[index].status.load(std::memory_order_acquire);
-                
-                if (status == SlotStatus::EMPTY) {
-                    return std::nullopt;
-                } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
-                    notify_all(key, DBEvent::GET);
-                    return buckets_[index].value;
-                }
-
-                // 线性探测
-                index = (index + 1) % capacity_;
-                probe_count++;
-                
-                // 探测完整个表
-                if (probe_count >= capacity_) {
-                    return std::nullopt;
-                }
-                
-                // 回到起点，说明表已满
-                if (index == original_index) {
-                    return std::nullopt;
-                }
-            }
-        }
+        std::optional<std::string> get(const std::string& key);
 
         std::shared_ptr<MetadataManager> get_metadata_manager() {
             return metadata_manager_;
