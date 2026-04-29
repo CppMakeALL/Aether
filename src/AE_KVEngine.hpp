@@ -29,6 +29,14 @@ namespace Aether {
                 return get_shard(key).get(key);
             }
 
+            std::optional<std::string> get_nosimd(const std::string& key) {
+                return get_shard(key).get_nosimd(key);
+            }
+
+            bool exist(const std::string& key) {
+                return get_shard(key).exist(key);
+            }
+
         protected:
             // 饿汉模式：静态实例
             static KVEngine* inst;

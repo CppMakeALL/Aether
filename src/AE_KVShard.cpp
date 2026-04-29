@@ -188,56 +188,83 @@ namespace Aether {
             }
         }
     }
-std::optional<std::string> LockFreeHashTable::get(const std::string& key) {
-    const uint64_t target_hash = hash(key);
-    const size_t mask = capacity_ - 1;
-    size_t index = target_hash & mask;
-    size_t probe_count = 0;
+    std::optional<std::string> LockFreeHashTable::get(const std::string& key) {
+        const uint64_t target_hash = hash(key);
+        const size_t mask = capacity_ - 1;
+        size_t index = target_hash & mask; // &(n-1) 相当于取模n
+        size_t probe_count = 0;
 
-    while (probe_count < capacity_) {
-        // ==============================
-        // ✅ 正确 AVX2：每 8 个槽批量查一次（不跳步！）
-        // ==============================
-        if ((index & 7) == 0 && (index + 7) < capacity_) {
-            __m256i hashes = _mm256_loadu_si256((__m256i*)&buckets_[index].hash);
-            __m256i target = _mm256_set1_epi64x(target_hash);
-            __m256i cmp = _mm256_cmpeq_epi64(hashes, target);
-            int mask = _mm256_movemask_epi8(cmp);
+        while (probe_count < capacity_) {
+            if ((index + 3) < capacity_) {
+                __m256i hashes = _mm256_loadu_si256((__m256i*)&buckets_[index].hash);
+                __m256i target = _mm256_set1_epi64x(target_hash);
+                __m256i cmp = _mm256_cmpeq_epi64(hashes, target);
+                int simd_mask = _mm256_movemask_epi8(cmp);
 
-            while (mask) {
-                int pos = __builtin_ctz(mask) / 8;
-                mask &= mask - 1;
+                while (simd_mask) {
+                    int pos = __builtin_ctz(simd_mask) / 8;
+                    simd_mask &= simd_mask - 1;
 
-                auto& slot = buckets_[index + pos];
-                auto status = slot.status.load(std::memory_order_acquire);
-                
-                if (status == SlotStatus::OCCUPIED && slot.key == key) {
-                    notify_all(key, DBEvent::GET);
-                    return slot.value;
+                    auto& slot = buckets_[index + pos];
+                    auto status = slot.status.load(std::memory_order_acquire);
+                    
+                    if (status == SlotStatus::OCCUPIED && slot.key == key) {
+                        notify_all(key, DBEvent::GET);
+                        return slot.value;
+                    }
                 }
+                index = (index + 4) & mask;
+                probe_count += 4;
+                continue; // 直接进入下一轮，不执行下面的单个检查
             }
+
+            auto& slot = buckets_[index];
+            auto status = slot.status.load(std::memory_order_acquire);
+
+            if (status == SlotStatus::EMPTY) {
+                return std::nullopt;
+            }
+
+            if (status == SlotStatus::OCCUPIED && slot.hash == target_hash && slot.key == key) {
+                notify_all(key, DBEvent::GET);
+                return slot.value;
+            }
+
+            index = (index + 1) & mask;
+            probe_count++;
         }
 
-        // ==============================
-        // ✅ 必须逐个检查当前槽
-        // ==============================
-        auto& slot = buckets_[index];
-        auto status = slot.status.load(std::memory_order_acquire);
-
-        if (status == SlotStatus::EMPTY) {
-            return std::nullopt;
-        }
-
-        if (status == SlotStatus::OCCUPIED && slot.hash == target_hash && slot.key == key) {
-            notify_all(key, DBEvent::GET);
-            return slot.value;
-        }
-
-        // ✅ 一步一步走，绝对不跳！
-        index = (index + 1) & mask;
-        probe_count++;
+        return std::nullopt;
     }
 
-    return std::nullopt;
-}
+    std::optional<std::string> LockFreeHashTable::get_nosimd(const std::string& key) {
+        size_t index = hash(key);
+        size_t original_index = index;
+        size_t probe_count = 0;
+
+        while (true) {
+            auto status = buckets_[index].status.load(std::memory_order_acquire);
+            
+            if (status == SlotStatus::EMPTY) {
+                return std::nullopt;
+            } else if (status == SlotStatus::OCCUPIED && buckets_[index].key == key) {
+                notify_all(key, DBEvent::GET);
+                return buckets_[index].value;
+            }
+
+            // 线性探测
+            index = (index + 1) % capacity_;
+            probe_count++;
+            
+            // 探测完整个表
+            if (probe_count >= capacity_) {
+                return std::nullopt;
+            }
+            
+            // 回到起点，说明表已满
+            if (index == original_index) {
+                return std::nullopt;
+            }
+        }
+    }
 }

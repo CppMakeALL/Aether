@@ -89,6 +89,43 @@ namespace Aether {
         }
         return value;
     }
+    std::string TCPClient::get_nosimd(const std::string& key)
+    {
+        // std::string cmd = "GET_NOSIMD " + key;
+        // std::string response = static_cast<TCPClient*>(g_client.get())->send_command(cmd);
+        // if (response == "ERROR"){
+        //     return "";
+        // }
+        // std::string value = response.substr(3);
+        // // 移除响应末尾的\r\n
+        // size_t pos = value.find("\r\n");
+        // if (pos != std::string::npos) {
+        //     value = value.substr(0, pos);
+        // }
+        // return value;
+        std::string cmd = "GET_NOSIMD " + key;
+        std::string response = send_command(cmd);
+        if (response == "ERROR"){
+            return "";
+        }
+        std::string value = response.substr(3);
+        // 移除响应末尾的\r\n
+        size_t pos = value.find("\r\n");
+        if (pos != std::string::npos) {
+            value = value.substr(0, pos);
+        }
+        return value;
+    }
+
+    bool TCPClient::exist(const std::string& key)
+    {
+        std::string cmd = "EXISTS " + key;
+        std::string response = send_command(cmd);
+        if (response == "ERROR"){
+            return false;
+        }
+        return response.substr(1) == "1";
+    }
 
     bool TCPClient::disconnect()
     {
@@ -117,6 +154,14 @@ namespace Aether {
     {
         return "";
     }
+    std::string RDMAClient::get_nosimd(const std::string& key)
+    {
+        return "";
+    }
+    bool RDMAClient::exist(const std::string& key)
+    {
+        return false;
+    }
 
     // 全局客户端实例
     static std::unique_ptr<ClientInterface> g_client;
@@ -143,6 +188,24 @@ namespace Aether {
             return "";
         } 
         return g_client->get(key);
+    }
+
+    std::string get_nosimd(const std::string& key)
+    {
+        if (!g_client){
+            spdlog::error("Aether_client::get_nosimd: client is not connected");
+            return "";
+        } 
+        return g_client->get_nosimd(key);
+    }
+
+    bool exist(const std::string& key)
+    {
+        if (!g_client){
+            spdlog::error("Aether_client::exist: client is not connected");
+            return false;
+        } 
+        return g_client->exist(key);
     }
 
     bool disconnect()

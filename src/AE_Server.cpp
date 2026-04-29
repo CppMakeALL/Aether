@@ -234,7 +234,24 @@ namespace Aether {
             } else {
                 send(client->fd, "ERROR\r\n", 7, 0);
             }
-        } else {
+        } else if (op == "GET_NOSIMD") {
+            // GET_NOSIMD key
+            std::string key_str = rest;
+            auto value = KVEngine::instance().get_nosimd(key_str);
+            if (value) {
+                std::string response = "OK " + *value + "\r\n";
+                send(client->fd, response.c_str(), response.size(), 0);
+            } else {
+                send(client->fd, "ERROR\r\n", 7, 0);
+            }
+        } else if (op == "EXISTS") {
+            // EXISTS key
+            std::string key_str = rest;
+            //uint64_t key = std::stoull(key_str);
+            bool exists = KVEngine::instance().exist(key_str);
+            send(client->fd, exists ? "OK 1\r\n" : "OK 0\r\n", exists ? 12 : 12, 0);
+        }
+        else {
             // 未知命令
             send(client->fd, "ERROR\r\n", 7, 0);
         }

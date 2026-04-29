@@ -3,7 +3,7 @@
 ## 正在做
 - [ ] 策略模式实现，用于选择不同的key值的淘汰策略(LRU/LFU/FIFO) 和序列化方法(JSON/Protobuf ,用simdjson和flatbuffers主要用于持久化)
 - [ ] SIMD加速哈希计算，get和exist和evict_key目前没加,set加了但这只处理第一个匹配的hash,会漏掉其他匹配的hash，需要一次性全部处理，另外需要测试性能是否提升,现在set,get,exist里面加了avx2,需要封装出一个普通的get,set,exist,evict_key,用于测试性能，并需要一个可以测出差距的场景，不能太简单
-
+- [ ] hash换32位,AVX2换成AVX10
 ## 待实现
 - [ ] 目前服务端其实还是单线程，并没有开启多线程，需要设计实现多线程服务端
 - [ ] 目前协议太简单，需要实现RESP协议

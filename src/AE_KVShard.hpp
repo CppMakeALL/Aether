@@ -101,6 +101,8 @@ namespace Aether {
 
         std::optional<std::string> get(const std::string& key);
 
+        std::optional<std::string> get_nosimd(const std::string& key);
+
         std::shared_ptr<MetadataManager> get_metadata_manager() {
             return metadata_manager_;
         }
@@ -156,6 +158,14 @@ namespace Aether {
 
         std::optional<std::string> get(const std::string& key) {
             return hash_table_.get(key);
+        }
+
+        std::optional<std::string> get_nosimd(const std::string& key) {
+            return hash_table_.get_nosimd(key);
+        }
+
+        bool exist(const std::string& key) {
+            return hash_table_.exist(key);
         }
 
     private:

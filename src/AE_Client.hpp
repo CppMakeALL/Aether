@@ -25,6 +25,8 @@ namespace Aether {
         virtual bool disconnect() = 0;
         virtual bool set(const std::string& key, const std::string& value) = 0;
         virtual std::string get(const std::string& key) = 0;
+        virtual std::string get_nosimd(const std::string& key) = 0;
+        virtual bool exist(const std::string& key) = 0;
     };
     //客户端工厂类
     //根据传输模式创建对应的客户端连接类
@@ -45,6 +47,8 @@ namespace Aether {
         bool disconnect() override;
         bool set(const std::string& key, const std::string& value) override;
         std::string get(const std::string& key) override;
+        bool exist(const std::string& key) override;
+        std::string get_nosimd(const std::string& key) override;
         std::string send_command(const std::string& command);
     private:
         int sockfd_;
@@ -59,11 +63,15 @@ namespace Aether {
         bool disconnect() override;
         bool set(const std::string& key, const std::string& value) override;
         std::string get(const std::string& key) override;
+        std::string get_nosimd(const std::string& key) override;
+        bool exist(const std::string& key) override;
     };
 
     //封装的全局函数声明
     bool connect(const std::string& ip, int port, TransMode mode);
     bool set(const std::string& key, const std::string& value);
     std::string get(const std::string& key);
+    std::string get_nosimd(const std::string& key);
+    bool exist(const std::string& key);
     bool disconnect();
 }
