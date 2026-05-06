@@ -81,33 +81,34 @@ namespace Aether {
             }
         }
     void LockFreeHashTable::set(const std::string& key, const std::string& value) {
-        const uint64_t target_hash = hash(key);  // 只算一次 hash
+        const uint32_t target_hash = static_cast<uint32_t>(hash(key));  // 只算一次 hash，改为32位
         size_t index = target_hash & (capacity_ - 1);
         const size_t original_index = index;
         size_t probe_count = 0;
 
-        // 第一部分：使用AVX2一次性比较8个槽位，快速查找已存在的key
+        // 第一部分：使用AVX2一次性比较8个槽位（32位hash），快速查找已存在的key
         while (probe_count < capacity_) {
-            // AVX2 批量比较 8 个 slot（核心加速）
+            // AVX2 批量比较 8 个 slot（32位hash，核心加速）
             if ((index + 7) < capacity_) {
-                // 一次加载 8 个 hash
+                // 一次加载 8 个 32位 hash
                 __m256i hashes = _mm256_loadu_si256(
                     (__m256i*)&buckets_[index].hash
                 );
-                __m256i target = _mm256_set1_epi64x(target_hash);
-                __m256i cmp = _mm256_cmpeq_epi64(hashes, target);
-                int mask = _mm256_movemask_epi8(cmp);
+                __m256i target = _mm256_set1_epi32(target_hash);
+                __m256i cmp = _mm256_cmpeq_epi32(hashes, target);
+                int simd_mask = _mm256_movemask_epi8(cmp);
 
-                if (mask != 0) {
+                if (simd_mask != 0) {
                     // 找到匹配的 hash，检查每个匹配的槽位
-                    for (int i = 0; i < 8; i++) {
-                        if (mask & (0xffff << (i * 8))) {
-                            HashSlot& slot = buckets_[index + i];
-                            if (slot.status == SlotStatus::OCCUPIED && slot.key == key) {
-                                // 找到已存在的key，直接修改值
-                                slot.value = value;
-                                return;
-                            }
+                    int mask_copy = simd_mask;
+                    while (mask_copy) {
+                        int pos = __builtin_ctz(mask_copy) / 4;
+                        mask_copy &= mask_copy - 1;
+                        HashSlot& slot = buckets_[index + pos];
+                        if (slot.status == SlotStatus::OCCUPIED && slot.key == key) {
+                            // 找到已存在的key，直接修改值
+                            slot.value = value;
+                            return;
                         }
                     }
                 }
@@ -189,20 +190,20 @@ namespace Aether {
         }
     }
     std::optional<std::string> LockFreeHashTable::get(const std::string& key) {
-        const uint64_t target_hash = hash(key);
+        const uint32_t target_hash = static_cast<uint32_t>(hash(key));
         const size_t mask = capacity_ - 1;
         size_t index = target_hash & mask; // &(n-1) 相当于取模n
         size_t probe_count = 0;
 
         while (probe_count < capacity_) {
-            if ((index + 3) < capacity_) {
+            if ((index + 7) < capacity_) {
                 __m256i hashes = _mm256_loadu_si256((__m256i*)&buckets_[index].hash);
-                __m256i target = _mm256_set1_epi64x(target_hash);
-                __m256i cmp = _mm256_cmpeq_epi64(hashes, target);
+                __m256i target = _mm256_set1_epi32(target_hash);
+                __m256i cmp = _mm256_cmpeq_epi32(hashes, target);
                 int simd_mask = _mm256_movemask_epi8(cmp);
 
                 while (simd_mask) {
-                    int pos = __builtin_ctz(simd_mask) / 8;
+                    int pos = __builtin_ctz(simd_mask) / 4;
                     simd_mask &= simd_mask - 1;
 
                     auto& slot = buckets_[index + pos];
@@ -213,8 +214,8 @@ namespace Aether {
                         return slot.value;
                     }
                 }
-                index = (index + 4) & mask;
-                probe_count += 4;
+                index = (index + 8) & mask;
+                probe_count += 8;
                 continue; // 直接进入下一轮，不执行下面的单个检查
             }
 

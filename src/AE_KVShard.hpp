@@ -20,7 +20,7 @@ namespace Aether {
     // 开放寻址哈希表的槽位
     struct HashSlot {
         std::atomic<SlotStatus> status{SlotStatus::EMPTY};
-        uint64_t hash;  
+        uint32_t hash;  // 改为uint32_t，以便一次SIMD比较8个
         std::string key;
         std::string value;
     };
@@ -137,7 +137,7 @@ namespace Aether {
     // KV分片
     class KVShard {
     public:
-        KVShard(size_t max_memory) : hash_table_(1024, max_memory) {
+        KVShard(size_t max_memory) : hash_table_(65536, max_memory) {  // 增大初始容量到65536
             hash_table_.set_evict_strategy(std::make_unique<FIFOStrategy>());
         }
         // 移动构造函数

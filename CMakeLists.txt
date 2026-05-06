@@ -79,14 +79,5 @@ target_include_directories(Aether_client_test PUBLIC ./src)
 target_link_directories(Aether_client_test PUBLIC ./build)
 target_link_libraries(Aether_client_test PUBLIC Aether_client)
 
-#performance_test
-add_executable(performance_test test/performance_test.cpp)
-target_include_directories(performance_test PUBLIC ./src)
-target_link_directories(performance_test PUBLIC ./build)
-target_link_libraries(performance_test PUBLIC Aether_client)
-
-#test_open_addressing
-add_executable(test_open_addressing test/test_open_addressing.cpp)
-target_include_directories(test_open_addressing PUBLIC ./src)
-target_link_directories(test_open_addressing PUBLIC ./build)
-target_link_libraries(test_open_addressing PUBLIC Aether_client)
+#test_simd_hash_search
+add_executable(test_simd_hash_search test/test_simd_hash_search.cpp)

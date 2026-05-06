@@ -33,7 +33,7 @@ int main()
     }
 
     // 预先设置一些key-value对（使用随机key增加哈希冲突）
-    const int NUM_KEYS = 1000;
+    const int NUM_KEYS = 1800;
     std::vector<std::string> keys;
     keys.reserve(NUM_KEYS);
     
